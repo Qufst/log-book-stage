@@ -31,5 +31,8 @@ On a donc pour l'instant un dépôt qui installe les dépendances pour quarto et
 Problème 2: Comment avec un workflows faire fonctionner d'autres workflows:
 solution pour un seul dépôt: Dans le même dépôt j'ai plusieurs workflows. Un workflows principal qui lance plusieurs workflows situés dans le même dépôt qui s'éxécutent donc en même temps indépendamment les uns des autres. [workflows_principal](https://github.com/Qufst/test-imbrication-de-workflows/.github/workflows/main_workflows.yml)
 
-Problème 3: Comment faire fonctionner des workflows situés sur des dépôts publics m'appartenant:
+## Mission n°2: utiliser la mission 1 et appliquer ce processus au template_python:
+
+Problème 1: utiliser l'environnement créé dans un workflows dans un second workflows
+J'ai mon workflows principal qui lance un second workflows. Celui-là crée l'environnement selon les dépendances pythons, puis lance le workflows publish qui installe les dépendances quarto computo et publie l'article. Cependant je n'arrive pas à réutiliser l'environnement du workflows 2 dans le workflows publish. Donc j'ai essayé de téléchargé l'environnement à un endroit spécifique du dépôt avec la commande 'python -m venv ./abc', et de l'activer dans le dernier workflows avec la commande 'source ./abc/bin/activate', mais github me répond qu'il ne trouve pas l'environnement, malgré que l'éxécution du second workflows se passe bien et que l'environnement soit créé. 
 
