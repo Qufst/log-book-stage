@@ -1,0 +1,280 @@
+---
+title: "Imbrication de workflows"
+author: "FESTOR Quentin"
+highlight-style: ayu
+format: 
+    revealjs:
+        transition: slide
+        theme: [default, customslides.scss]
+---
+
+# Problématique 
+Comment utiliser l'imbrication des workflows pour séparer les flux de travail? 
+
+# Arbre hiérarchique
+
+```{plaintext}
+.
+├── .github/
+│   └── workflows/
+│       ├── main_workflows.yml
+│       ├── python_workflows.yml
+│       └── quartopublish_workflows.yml
+├── .gitignore
+├── README.md
+├── _quarto.yml
+├── example.txt
+├── references.bib
+├── requirements.txt
+└── template-computo-python.qmd
+```
+
+# Outils utilisés et documentation
+
+## Imbrication de workflows
+
+::: {.incremental}
+Notre étude porte sur l'imbrication de workflows. Cependant pour appeler un workflows depuis un autre workflows il faut respecter certaines syntax:
+
+* pour appeler d'autres workflows, le workflows principal doit ressembler à l'exemple suivant:
+```{.yml filename="main_workflows"}
+jobs:
+  call-workflow-1-in-local-repo:
+    uses: octo-org/this-repo/.github/workflows/workflow-1.yml@172239021f7ba04fe7327647b213799853a9eb89 
+  call-workflow-2-in-local-repo:
+    uses: ./.github/workflows/workflow-2.yml
+  call-workflow-in-another-repo:
+    uses: octo-org/another-repo/.github/workflows/workflow.yml@v1
+```
+:::
+
+--- 
+
+Cependant à chaque éxécution de workflows, la machine virtuelle est remise à zéro, ce qui empêche la transmission directe des environnements par exemple.
+
+::: {.incremental}
+* 'with' permet de passer des paramètres ou des arguments au workflows réutilisable au workflows réutilisable
+* 'secret' permet de passer des informations sensibles comme les tokens au workflows réutilisable
+* 'needs' permet de spécifier une action ou un workflows à effectuer au préalable avant d'éxécuter le second workflows réutilisable
+
+:::
+
+--- 
+
+::: {.incremental}
+
+* 'workflows_call' il est nécessaire de préciser en haut des workflows qu'on veut réutiliser cette commande : 'on:
+  workflow_call:' pour qu'ils puissent être éxécutés par d'autres workflows. 
+* [Documentation](https://docs.github.com/en/actions/using-workflows/reusing-workflows#calling-a-reusable-workflow)
+
+:::
+
+
+## Artifacts
+
+::: {.incremental}
+Les artifacts sont utilisés pour stocker des fichiers générés par un workflows et les rendre disponibles:
+
+* au téléchargement pour une utilisation extèrieur au dépôt 
+
+* pour d'autres workflows qui s'éxécutent à postériori
+
+* [doc_artifacts](https://docs.github.com/fr/actions/using-workflows/storing-workflow-data-as-artifacts)
+
+::: 
+--- 
+
+Notre utilisation: 
+
+
+On souhaite utiliser l'environnement créé dans 'python_workflows.yml' dans notre deuxième workflows 'quartopublish_workflows.yml'. On a vu précédemment qu'à chaque utilisation de workflows la machine virtuelle était rémise à zéro. L'artifact est donc l'outil qu'il nous faut pour stocker l'environnement avant l'éxécution du workflows de publication. 
+Ainsi après avoir créé un environnement virtuel dans le python workflows, on utilise l'action 'actions/upload-artifact@v3' à la fin du workflows 'python_workflows.yml'. 
+
+---
+
+Cependant l'utilisation de cette commande sur un environnement est assez longue, donc pour accélérer l'opération on va zipper l'environnement ultérieurement.
+Ensuite il faut introduire au début du workflows de publication l'action 'actions/download-artifact@v3'.
+
+
+## Caches
+
+La mise en cache des dépendances permet d'accélérer et améliorer l'efficacité des workflows.  La commande 'actions/cache@v3' permet de créer un cache identifié par une clé unique afin de raccourcir le temps nécessaire à recréer les fichiers tel que les dépendances et les autres fichiers qui n'évoluent pas trop dans le temps. Il suffit alors d'utiliser cette même commande pour appeler les fichiers en cache.
+[Documentation](https://docs.github.com/fr/actions/using-workflows/caching-dependencies-to-speed-up-workflows)
+
+
+# Description des workflows
+
+## main_workflows
+```{.yml filename="main_workflows.yml"}
+name: Main Workflows
+
+on:
+  push:
+    branches: ["main"]
+  repository_dispatch:
+    types: [custom-event] 
+
+
+jobs:
+  call_python_workflows:
+    uses: ./.github/workflows/python_workflows.yml
+    with:
+      config-path: './config/python_config.yml'
+    secrets:
+      token: ${{ secrets.GITHUB_TOKEN }} 
+  call_quartopublish_workflows:
+    uses: ./.github/workflows/quartopublish_workflows.yml
+    needs: call_python_workflows
+    with:
+      config-path: './config/quarto_config.yml'
+    secrets:
+      token: ${{ secrets.GITHUB_TOKEN }} 
+```
+## python_workflows
+
+
+```{.yml filename="python_workflows.yml"}
+name: python
+
+on:
+  repository_dispatch:
+    types: [custom-event] 
+  workflow_call:
+    inputs:
+      config-path:
+        required: true
+        type: string
+    secrets:
+      token:
+        required: true
+
+
+jobs:
+  dependencies:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+
+      - name: Set up Python
+        uses: actions/setup-python@v2
+        with:
+          python-version: '3.10'
+
+      - name: Create virtual environment and install dependencies
+        run: |
+          python -m venv ./venv
+          source ./venv/bin/activate
+          pip install -r requirements.txt
+
+      - name: Cache pip dependencies
+        id: cache-pip
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cache/pip
+            ./venv  
+          key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-
+      
+      - name: Compress virtual environment
+        run: |
+          zip -r venv.zip ./venv
+
+      - name: Upload virtual environment as artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: python-venv
+          path: venv.zip
+
+```
+## quartopublish_workflows
+
+
+```{.yml filename="quartopublish_workflows.yml"}
+name: publish
+
+on:
+  workflow_call:
+    inputs:
+      config-path:
+        required: true
+        type: string
+    secrets:
+      token:
+        required: true
+
+        
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v2
+
+      - name: Set up Python
+        uses: actions/setup-python@v2
+        with:
+          python-version: '3.10'
+
+      - name: Restore pip dependencies cache
+        id: restore-cache
+        uses: actions/cache@v3
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
+          restore-keys: ${{ runner.os }}-pip-
+
+      - name: Download virtual environment artifact
+        uses: actions/download-artifact@v3
+        with:
+          name: python-venv
+          path: venv.zip
+
+
+      - name: Decompress virtual environment
+        run: |
+          unzip ./venv.zip/venv.zip
+
+
+      - name: Set up Quarto
+        uses: quarto-dev/quarto-actions/setup@v2
+        with:
+          tinytex: true
+  
+      - name: Register TinyTeX globally for diagram.lua
+        run: |
+          mkdir -p ~/.local/bin
+          ~/.TinyTeX/bin/x86_64-linux/tlmgr option sys_bin ~/.local/bin
+          ~/.TinyTeX/bin/x86_64-linux/tlmgr path add
+          ~/.TinyTeX/bin/x86_64-linux/tlmgr install libertinus-fonts
+  
+      - name: Install Computo extension for Quarto
+        run: |
+          quarto add --no-prompt computorg/computo-quarto-extension
+
+      - name: Configure Git
+        run: |
+          git config --global user.email "quentin.festor@etu.umontpellier.com"
+          git config --global user.name "quarto-github-actions"
+  
+      - name: Publish with Quarto + activate environment
+        env:
+          QUARTO_PUBLISHER: gh-pages
+        run: |
+          source ./venv/bin/activate
+          python --version
+          pip list
+          quarto publish template-computo-python.qmd
+
+ 
+```
+
+# [lien_vers_le_projet](https://github.com/Qufst/template-computo-python/)
