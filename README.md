@@ -251,7 +251,11 @@ From: rocker/r-ver:4.4.0
 %runscript
     exec "$@"
 ```
+## Problème rencontré
+L'extension computo installée lors de la création de l'image n'est pas trouvée.
 
+## idée
+On veut séparer quarto de la création de l'image pour pouvoir changer la version de quarto après création de l'image.
 
 
 
