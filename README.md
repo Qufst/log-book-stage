@@ -257,6 +257,9 @@ L'extension computo installée lors de la création de l'image n'est pas trouvé
 ## idée
 On veut séparer quarto de la création de l'image pour pouvoir changer la version de quarto après création de l'image.
 
+Première idée: construire une image sans quarto, et ouvrir cette image comme une sandbox afin qu'elle soit writable. Ainsi je peux installer quarto dedans. 
+Il semblerait que quarto s'installe mais j'ai des problèmes avec deno.
+
 
 
 
